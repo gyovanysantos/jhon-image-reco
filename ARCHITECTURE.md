@@ -24,8 +24,8 @@ PDF Catalog ──▶ Python (pdfplumber) ──▶ CSV (100 parts)
                              Embeddings v1 (1024-dim)
                                     │
                                     ▼
-                             OpenSearch Serverless
-                             (kNN vector index)
+                             DynamoDB (binary embedding
+                             attribute on parts-catalog)
 ```
 
 ## Query Flow
@@ -36,11 +36,11 @@ User Camera/Upload
        ▼
   API Gateway ──▶ Lambda (recognize_handler)
                         │
-                        ├─▶ Bedrock: vectorize query image
+                        ├─▶ Bedrock: vectorize query image (us-east-1)
                         │
-                        ├─▶ OpenSearch: kNN similarity search
+                        ├─▶ DynamoDB: scan embeddings + cosine similarity
                         │
-                        └─▶ DynamoDB: fetch part details
+                        └─▶ Return top-K matches with part details
                                 │
                                 ▼
                          JSON response ──▶ Frontend overlay
@@ -52,11 +52,14 @@ All AWS resources managed by **CDK (TypeScript)** in `infra/`.
 
 | Stack | Resources |
 |-------|-----------|
-| StorageStack | S3 bucket, DynamoDB table |
-| ScraperStack | ECS Fargate task (Scrapy), ECR repo |
-| VectorStack | OpenSearch Serverless collection, vectorization Lambda |
+| StorageStack | S3 bucket |
+| ScraperStack | ECS Fargate task (Scrapy), ECR repo, DynamoDB table |
 | ApiStack | API Gateway, recognition Lambda, parts Lambda |
 | FrontendStack | CloudFront distribution, S3 static hosting |
+
+> **Note:** VectorStack was removed — embeddings are stored directly in DynamoDB
+> as binary attributes. Cosine similarity is computed in the Lambda function.
+> This saves ~$700/month vs OpenSearch Serverless for small datasets (<10K vectors).
 
 ## Directory Layout
 

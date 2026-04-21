@@ -17,7 +17,7 @@
 | **Amazon S3** | Stores CSV, scraped images, JSON data, and frontend static files |
 | **Amazon DynamoDB** | NoSQL store for structured part data (fast key-value lookups by part number) |
 | **Amazon Bedrock** | Titan Multimodal Embeddings v1 — generates 1024-dim vectors from images |
-| **Amazon OpenSearch Serverless** | kNN vector similarity search over image embeddings |
+| ~~Amazon OpenSearch Serverless~~ | Removed — DynamoDB + Lambda cosine similarity is cheaper for <10K vectors |
 | **AWS Lambda** | Serverless compute for API handlers and image vectorization |
 | **Amazon API Gateway** | REST API endpoint for the frontend |
 | **Amazon CloudFront** | CDN for frontend static assets |

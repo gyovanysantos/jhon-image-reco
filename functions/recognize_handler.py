@@ -1,26 +1,29 @@
 """
 Phase 4a: Lambda handler for image recognition.
 
-Accepts an image (base64 encoded), vectorizes it via Bedrock,
-queries OpenSearch Serverless for similar images, and returns
-matched part details from DynamoDB.
+Accepts an image (base64 encoded), vectorizes it via Bedrock Titan,
+loads all embeddings from DynamoDB, computes cosine similarity,
+and returns the top matching parts.
+
+For ~100 items, brute-force cosine similarity is instant and avoids
+the ~$700/month cost of OpenSearch Serverless.
 """
 
 import base64
 import json
+import math
 import os
+import struct
 
 import boto3
-from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth
 
-OPENSEARCH_ENDPOINT = os.environ.get("OPENSEARCH_ENDPOINT", "")
-INDEX_NAME = os.environ.get("INDEX_NAME", "part-images")
 TABLE_NAME = os.environ.get("TABLE_NAME", "parts-catalog")
-REGION = os.environ.get("AWS_REGION", "us-east-1")
+BEDROCK_REGION = os.environ.get("BEDROCK_REGION", "us-east-1")
+AWS_REGION = os.environ.get("AWS_REGION", "us-east-2")
 TOP_K = 5
 
-bedrock_client = boto3.client("bedrock-runtime", region_name=REGION)
-dynamodb = boto3.resource("dynamodb", region_name=REGION)
+bedrock_client = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
+dynamodb = boto3.resource("dynamodb", region_name=AWS_REGION)
 table = dynamodb.Table(TABLE_NAME)
 
 CORS_HEADERS = {
@@ -28,18 +31,6 @@ CORS_HEADERS = {
     "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Allow-Methods": "POST,OPTIONS",
 }
-
-
-def get_opensearch_client():
-    credentials = boto3.Session().get_credentials()
-    auth = AWSV4SignerAuth(credentials, REGION, "aoss")
-    return OpenSearch(
-        hosts=[{"host": OPENSEARCH_ENDPOINT, "port": 443}],
-        http_auth=auth,
-        use_ssl=True,
-        verify_certs=True,
-        connection_class=RequestsHttpConnection,
-    )
 
 
 def get_image_embedding(image_bytes: bytes) -> list[float]:
@@ -56,25 +47,54 @@ def get_image_embedding(image_bytes: bytes) -> list[float]:
     return result["embedding"]
 
 
-def search_similar_images(os_client, embedding: list[float], k: int = TOP_K):
-    query = {
-        "size": k,
-        "query": {
-            "knn": {
-                "embedding": {
-                    "vector": embedding,
-                    "k": k,
-                }
-            }
-        },
-    }
-    response = os_client.search(index=INDEX_NAME, body=query)
-    return response["hits"]["hits"]
+def binary_to_embedding(data: bytes) -> list[float]:
+    """Unpack binary (float32 little-endian) back to a list of floats."""
+    n = len(data) // 4
+    return list(struct.unpack(f"<{n}f", data))
 
 
-def get_part_details(part_number: str) -> dict:
-    response = table.get_item(Key={"part_number": part_number})
-    return response.get("Item", {})
+def cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Compute cosine similarity between two vectors (pure Python, no numpy needed)."""
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(x * x for x in b))
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
+def search_similar(query_embedding: list[float], k: int = TOP_K) -> list[dict]:
+    """Scan DynamoDB for items with embeddings, rank by cosine similarity."""
+    # Scan all items that have an embedding attribute
+    response = table.scan(
+        ProjectionExpression="part_number, embedding, title, brand, mfg_number, url, specifications, image_s3_key",
+        FilterExpression="attribute_exists(embedding)",
+    )
+    items = response.get("Items", [])
+
+    # Handle pagination for larger tables
+    while "LastEvaluatedKey" in response:
+        response = table.scan(
+            ProjectionExpression="part_number, embedding, title, brand, mfg_number, url, specifications, image_s3_key",
+            FilterExpression="attribute_exists(embedding)",
+            ExclusiveStartKey=response["LastEvaluatedKey"],
+        )
+        items.extend(response.get("Items", []))
+
+    # Compute similarity scores
+    scored = []
+    for item in items:
+        emb_binary = item.get("embedding")
+        if not emb_binary:
+            continue
+        # DynamoDB Binary type returns bytes
+        stored_embedding = binary_to_embedding(bytes(emb_binary.value) if hasattr(emb_binary, 'value') else bytes(emb_binary))
+        score = cosine_similarity(query_embedding, stored_embedding)
+        scored.append((score, item))
+
+    # Sort by similarity (highest first) and return top-k
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return scored[:k]
 
 
 def handler(event, context):
@@ -114,36 +134,22 @@ def handler(event, context):
         # Vectorize the query image
         embedding = get_image_embedding(image_bytes)
 
-        # Search for similar images
-        os_client = get_opensearch_client()
-        hits = search_similar_images(os_client, embedding)
+        # Search for similar images via DynamoDB cosine similarity
+        results = search_similar(embedding)
 
-        # Fetch part details for each match
+        # Build response
         matches = []
-        seen_parts = set()
-        for hit in hits:
-            part_number = hit["_source"]["part_number"]
-            if part_number in seen_parts:
-                continue
-            seen_parts.add(part_number)
-
-            score = hit.get("_score", 0)
-            details = get_part_details(part_number)
-
-            if details:
-                matches.append({
-                    "part_number": part_number,
-                    "confidence_score": round(float(score), 4),
-                    "title": details.get("title", ""),
-                    "description": details.get("description", ""),
-                    "brand": details.get("brand", ""),
-                    "mfg_number": details.get("mfg_number", ""),
-                    "url": details.get("url", ""),
-                    "specifications": details.get("specifications", {}),
-                    "pricing": details.get("pricing", "Sign in required"),
-                    "catalog_page": details.get("catalog_page", ""),
-                    "datasheets": details.get("datasheets", []),
-                })
+        for score, item in results:
+            matches.append({
+                "part_number": item.get("part_number", ""),
+                "confidence_score": round(score, 4),
+                "title": item.get("title", ""),
+                "brand": item.get("brand", ""),
+                "mfg_number": item.get("mfg_number", ""),
+                "url": item.get("url", ""),
+                "specifications": item.get("specifications", {}),
+                "image_s3_key": item.get("image_s3_key", ""),
+            })
 
         return {
             "statusCode": 200,

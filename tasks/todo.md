@@ -14,9 +14,11 @@
 - [x] Run full scrape (100 parts → images + JSON + DynamoDB)
 
 ## Phase 3: Image Vectorization
-- [ ] Deploy VectorStack (OpenSearch Serverless collection)
-- [ ] Run batch vectorization script on scraped images
-- [ ] Verify kNN index in OpenSearch
+- [x] ~~Deploy VectorStack~~ → Removed OpenSearch ($700/mo), using DynamoDB instead
+- [x] Enable Bedrock Titan Multimodal Embeddings (us-east-1, cross-region)
+- [x] Run batch vectorization (100 images → 1024-dim embeddings in DynamoDB)
+- [x] Verify embeddings (100/100 items with binary embedding attribute)
+- [x] End-to-end similarity test (motors match motors, thermostats rank low)
 
 ## Phase 4: AR Web App + API
 - [ ] Deploy ApiStack (API Gateway, Lambda handlers)

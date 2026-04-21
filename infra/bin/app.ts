@@ -3,7 +3,6 @@ import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
 import { StorageStack } from '../lib/storage-stack';
 import { ScraperStack } from '../lib/scraper-stack';
-import { VectorStack } from '../lib/vector-stack';
 import { ApiStack } from '../lib/api-stack';
 import { FrontendStack } from '../lib/frontend-stack';
 
@@ -23,17 +22,14 @@ const scraper = new ScraperStack(app, 'JhonImageRecoScraper', {
   dataBucket: storage.dataBucket,
 });
 
-// Phase 3: Vector search (OpenSearch Serverless + Lambda)
-const vector = new VectorStack(app, 'JhonImageRecoVector', {
-  env,
-  dataBucket: storage.dataBucket,
-});
+// Phase 3: Vectorization done via batch script (scripts/batch_vectorize.py)
+// Embeddings stored directly in DynamoDB (no OpenSearch needed for 100 images)
 
 // Phase 4a: API (API Gateway + Lambda)
 new ApiStack(app, 'JhonImageRecoApi', {
   env,
   partsTable: scraper.partsTable,
-  opensearchEndpoint: vector.opensearchEndpoint,
+  dataBucket: storage.dataBucket,
 });
 
 // Phase 4b: Frontend (CloudFront + S3)

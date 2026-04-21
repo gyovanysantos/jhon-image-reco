@@ -44,3 +44,17 @@ A: The VectorStack imported `dataBucket` from StorageStack (dependency: Vector â
 
 **Q: What packages are needed for CDK TypeScript?**  
 A: Must install `@types/node` (devDep) and `source-map-support` in addition to `aws-cdk-lib` and `constructs`.
+
+## Vectorization / Embeddings
+
+**Q: Why not use OpenSearch Serverless for vector search?**  
+A: OpenSearch Serverless requires a minimum of 4 OCUs (2 indexing + 2 search) at $0.24/OCU/hour = ~$700/month. For small datasets (<10K vectors), storing embeddings as binary in DynamoDB and computing cosine similarity in Lambda is effectively free and just as fast.
+
+**Q: How are embeddings stored in DynamoDB?**  
+A: As a Binary attribute (`B` type). Each float32 is packed little-endian using Python's `struct.pack('<Nf', *values)`. A 1024-dim embedding = 4096 bytes. DynamoDB max item size is 400KB so this fits easily.
+
+**Q: Is Bedrock Titan Multimodal Embeddings available in us-east-2?**  
+A: No. It's only available in us-east-1, us-west-2, ap-southeast-1, eu-west-1. The batch script and Lambda call Bedrock in us-east-1 (cross-region). This adds ~20ms latency but works fine.
+
+**Q: How does the cosine similarity search work without a vector database?**  
+A: The DynamoDB table is scanned for items with `embedding` attribute. Each binary embedding is unpacked to float32 list. Cosine similarity is computed in pure Python (no numpy needed). For 100 items Ã— 1024 dims, this takes <1ms. Scales to ~10K items before needing a dedicated vector DB.

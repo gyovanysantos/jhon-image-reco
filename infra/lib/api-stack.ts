@@ -2,19 +2,21 @@ import * as cdk from 'aws-cdk-lib';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
 
 export interface ApiStackProps extends cdk.StackProps {
   partsTable: dynamodb.Table;
-  opensearchEndpoint: string;
+  dataBucket: s3.IBucket;
 }
 
 export class ApiStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
 
-    // Recognition Lambda
+    // Recognition Lambda — vectorizes query image via Bedrock,
+    // then computes cosine similarity against embeddings stored in DynamoDB
     const recognizeFn = new lambda.Function(this, 'RecognizeFn', {
       functionName: 'jhon-recognize',
       runtime: lambda.Runtime.PYTHON_3_11,
@@ -23,9 +25,8 @@ export class ApiStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30),
       memorySize: 512,
       environment: {
-        OPENSEARCH_ENDPOINT: props.opensearchEndpoint,
-        INDEX_NAME: 'part-images',
         TABLE_NAME: props.partsTable.tableName,
+        BEDROCK_REGION: 'us-east-1',
       },
     });
 
@@ -48,11 +49,6 @@ export class ApiStack extends cdk.Stack {
 
     recognizeFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['bedrock:InvokeModel'],
-      resources: ['*'],
-    }));
-
-    recognizeFn.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['aoss:APIAccessAll'],
       resources: ['*'],
     }));
 

@@ -2,25 +2,29 @@
 Phase 3: Batch vectorize all scraped product images.
 
 Reads images from S3, generates embeddings via Bedrock Titan Multimodal,
-and indexes them in OpenSearch Serverless.
+and stores them directly in the DynamoDB parts-catalog table.
+
+For 100 images, brute-force cosine similarity in Lambda is faster and cheaper
+than OpenSearch Serverless (~$700/month savings).
 """
 
 import base64
 import json
-import io
+import struct
+import time
 
 import boto3
-from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth
 
-BUCKET_NAME = "jhon-image-reco-data"
+BUCKET_NAME = "jhon-image-reco-data-424009524696"
 IMAGES_PREFIX = "images/"
-OPENSEARCH_ENDPOINT = ""  # Set after CDK deploy
-INDEX_NAME = "part-images"
-REGION = "us-east-1"
+TABLE_NAME = "parts-catalog"
+AWS_REGION = "us-east-2"
+# Titan Multimodal Embeddings is only available in us-east-1
+BEDROCK_REGION = "us-east-1"
 
 
 def get_image_embedding(bedrock_client, image_bytes: bytes) -> list[float]:
-    """Generate embedding for an image using Bedrock Titan Multimodal."""
+    """Generate 1024-dim embedding for an image using Bedrock Titan Multimodal."""
     body = json.dumps({
         "inputImage": base64.b64encode(image_bytes).decode("utf-8"),
     })
@@ -34,63 +38,25 @@ def get_image_embedding(bedrock_client, image_bytes: bytes) -> list[float]:
     return result["embedding"]
 
 
-def create_opensearch_client(endpoint: str, region: str) -> OpenSearch:
-    """Create an authenticated OpenSearch client."""
-    credentials = boto3.Session().get_credentials()
-    auth = AWSV4SignerAuth(credentials, region, "aoss")
-    return OpenSearch(
-        hosts=[{"host": endpoint, "port": 443}],
-        http_auth=auth,
-        use_ssl=True,
-        verify_certs=True,
-        connection_class=RequestsHttpConnection,
-    )
-
-
-def create_index_if_not_exists(client: OpenSearch) -> None:
-    """Create the part-images index with kNN vector mapping."""
-    if not client.indices.exists(INDEX_NAME):
-        mapping = {
-            "settings": {
-                "index.knn": True,
-            },
-            "mappings": {
-                "properties": {
-                    "embedding": {
-                        "type": "knn_vector",
-                        "dimension": 1024,
-                        "method": {
-                            "name": "hnsw",
-                            "space_type": "cosinesimil",
-                            "engine": "nmslib",
-                        },
-                    },
-                    "part_number": {"type": "keyword"},
-                    "image_s3_key": {"type": "keyword"},
-                },
-            },
-        }
-        client.indices.create(INDEX_NAME, body=mapping)
-        print(f"Created index '{INDEX_NAME}'")
+def embedding_to_binary(embedding: list[float]) -> bytes:
+    """Pack a list of floats into binary (float32 little-endian) for DynamoDB Binary type."""
+    return struct.pack(f"<{len(embedding)}f", *embedding)
 
 
 def main():
-    if not OPENSEARCH_ENDPOINT:
-        raise ValueError(
-            "Set OPENSEARCH_ENDPOINT after deploying the VectorStack via CDK."
-        )
-
-    s3 = boto3.client("s3", region_name=REGION)
-    bedrock = boto3.client("bedrock-runtime", region_name=REGION)
-    os_client = create_opensearch_client(OPENSEARCH_ENDPOINT, REGION)
-
-    create_index_if_not_exists(os_client)
+    s3 = boto3.client("s3", region_name=AWS_REGION)
+    bedrock = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
+    dynamodb = boto3.resource("dynamodb", region_name=AWS_REGION)
+    table = dynamodb.Table(TABLE_NAME)
 
     # List all images in the bucket
     paginator = s3.get_paginator("list_objects_v2")
     page_iter = paginator.paginate(Bucket=BUCKET_NAME, Prefix=IMAGES_PREFIX)
 
-    indexed_count = 0
+    vectorized_count = 0
+    errors = 0
+    start_time = time.time()
+
     for page in page_iter:
         for obj in page.get("Contents", []):
             key = obj["Key"]
@@ -103,21 +69,31 @@ def main():
                 continue
             part_number = parts[1]
 
-            print(f"Vectorizing: {key}")
-            response = s3.get_object(Bucket=BUCKET_NAME, Key=key)
-            image_bytes = response["Body"].read()
+            try:
+                print(f"[{vectorized_count + 1}] Vectorizing: {key}")
+                response = s3.get_object(Bucket=BUCKET_NAME, Key=key)
+                image_bytes = response["Body"].read()
 
-            embedding = get_image_embedding(bedrock, image_bytes)
+                embedding = get_image_embedding(bedrock, image_bytes)
 
-            doc = {
-                "embedding": embedding,
-                "part_number": part_number,
-                "image_s3_key": key,
-            }
-            os_client.index(index=INDEX_NAME, body=doc)
-            indexed_count += 1
+                # Store embedding as Binary attribute in existing DynamoDB item
+                table.update_item(
+                    Key={"part_number": part_number},
+                    UpdateExpression="SET embedding = :emb, image_s3_key = :key",
+                    ExpressionAttributeValues={
+                        ":emb": embedding_to_binary(embedding),
+                        ":key": key,
+                    },
+                )
+                vectorized_count += 1
 
-    print(f"Indexed {indexed_count} images into OpenSearch")
+            except Exception as e:
+                print(f"  ERROR on {key}: {e}")
+                errors += 1
+
+    elapsed = time.time() - start_time
+    print(f"\nDone! Vectorized {vectorized_count} images in {elapsed:.1f}s ({errors} errors)")
+    print(f"Embeddings stored in DynamoDB table '{TABLE_NAME}'")
 
 
 if __name__ == "__main__":
