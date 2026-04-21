@@ -50,12 +50,21 @@ User Camera/Upload
 
 All AWS resources managed by **CDK (TypeScript)** in `infra/`.
 
-| Stack | Resources |
-|-------|-----------|
-| StorageStack | S3 bucket |
-| ScraperStack | ECS Fargate task (Scrapy), ECR repo, DynamoDB table |
-| ApiStack | API Gateway, recognition Lambda, parts Lambda |
-| FrontendStack | CloudFront distribution, S3 static hosting |
+| Stack | Resources | Status |
+|-------|-----------|--------|
+| StorageStack | S3 bucket | ✅ Deployed |
+| ScraperStack | ECS Fargate task (Scrapy), ECR repo, DynamoDB table | ✅ Deployed |
+| ApiStack | API Gateway, recognition Lambda, parts Lambda | ✅ Deployed |
+| FrontendStack | CloudFront distribution, S3 static hosting | ✅ Deployed |
+
+## Live URLs
+
+| Service | URL |
+|---------|-----|
+| Frontend (CloudFront) | https://d1o7hcecd8nn1.cloudfront.net |
+| API Gateway | https://qowayc83di.execute-api.us-east-2.amazonaws.com/prod/ |
+| POST /api/recognize | https://qowayc83di.execute-api.us-east-2.amazonaws.com/prod/api/recognize |
+| GET /api/parts/{pn} | https://qowayc83di.execute-api.us-east-2.amazonaws.com/prod/api/parts/{part_number} |
 
 > **Note:** VectorStack was removed — embeddings are stored directly in DynamoDB
 > as binary attributes. Cosine similarity is computed in the Lambda function.

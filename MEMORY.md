@@ -4,8 +4,8 @@
 - **Phase 1 (PDF Extraction)**: COMPLETE — 100 parts extracted to `output/parts_catalog.csv`
 - **Phase 2 (Scraping)**: COMPLETE — 100 parts scraped, images + JSON in S3, data in DynamoDB
 - **Phase 3 (Vectorization)**: COMPLETE — 100 images vectorized via Bedrock Titan, embeddings in DynamoDB
-- **Phase 4 (AR Web App)**: IN PROGRESS — Local API (FastAPI:3001) + Frontend (Vite:5173) working
-- **Phase 5 (Deploy)**: Not started
+- **Phase 4 (AR Web App)**: COMPLETE — Local + Cloud deployed
+- **Phase 5 (Deploy)**: COMPLETE — All 4 stacks live
 
 ## Environment
 - Python 3.14.3 via uv 0.11.2
@@ -33,9 +33,17 @@
   - `images/{part_number}/{part_number}_0.jpg` — 100 product images
   - `scraped-data/{part_number}.json` — 100 JSON records
 - DynamoDB table: `parts-catalog` — 100 items (each with 1024-dim binary embedding)
-- CDK stacks: JhonImageRecoStorage, JhonImageRecoScraper
+- CDK stacks (all deployed):
+  - JhonImageRecoStorage (S3 bucket)
+  - JhonImageRecoScraper (ECS, ECR, DynamoDB)
+  - JhonImageRecoApi (API Gateway + 2 Lambdas)
+  - JhonImageRecoFrontend (CloudFront + S3)
 - OpenSearch: REMOVED (DynamoDB + cosine similarity saves ~$700/month)
 - Bedrock: Titan Multimodal Embeddings G1 in us-east-1 (cross-region call from us-east-2)
+
+## Live URLs
+- Frontend: https://d1o7hcecd8nn1.cloudfront.net
+- API: https://qowayc83di.execute-api.us-east-2.amazonaws.com/prod/
 
 ## Spider Details
 - Site blocks unknown user agents (`Disallow: /` for `*` in robots.txt)

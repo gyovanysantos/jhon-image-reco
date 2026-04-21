@@ -66,17 +66,19 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
 def search_similar(query_embedding: list[float], k: int = TOP_K) -> list[dict]:
     """Scan DynamoDB for items with embeddings, rank by cosine similarity."""
     # Scan all items that have an embedding attribute
-    response = table.scan(
-        ProjectionExpression="part_number, embedding, title, brand, mfg_number, url, specifications, image_s3_key",
-        FilterExpression="attribute_exists(embedding)",
-    )
+    # "url" is a DynamoDB reserved keyword — must use ExpressionAttributeNames
+    scan_kwargs = {
+        "ProjectionExpression": "part_number, embedding, title, brand, mfg_number, #u, specifications, image_s3_key",
+        "FilterExpression": "attribute_exists(embedding)",
+        "ExpressionAttributeNames": {"#u": "url"},
+    }
+    response = table.scan(**scan_kwargs)
     items = response.get("Items", [])
 
     # Handle pagination for larger tables
     while "LastEvaluatedKey" in response:
         response = table.scan(
-            ProjectionExpression="part_number, embedding, title, brand, mfg_number, url, specifications, image_s3_key",
-            FilterExpression="attribute_exists(embedding)",
+            **scan_kwargs,
             ExclusiveStartKey=response["LastEvaluatedKey"],
         )
         items.extend(response.get("Items", []))

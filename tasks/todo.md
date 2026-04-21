@@ -25,9 +25,16 @@
 - [x] Install frontend dependencies (React, Vite, TailwindCSS)
 - [x] Configure Vite proxy (/api → localhost:3001)
 - [x] Test local recognize endpoint (5 matches returned correctly)
-- [ ] Deploy ApiStack (API Gateway, Lambda handlers)
-- [ ] Build React frontend for production
-- [ ] Deploy FrontendStack (CloudFront + S3)
+- [x] Deploy ApiStack (API Gateway, Lambda handlers)
+- [x] Fix DynamoDB reserved keyword issue (`url` → `#u` alias)
+- [x] Build React frontend for production (VITE_API_URL baked in)
+- [x] Fix TypeScript build error (added `vite/client` types)
+- [x] Deploy FrontendStack (CloudFront + S3)
+- [x] End-to-end cloud test (5 matches returned from live API)
+
+## Live URLs
+- Frontend: https://d1o7hcecd8nn1.cloudfront.net
+- API: https://qowayc83di.execute-api.us-east-2.amazonaws.com/prod/
 
 ## Phase 5: Polish & Deploy
 - [ ] Performance tuning (cold starts, image sizes)
