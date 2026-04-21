@@ -1,9 +1,11 @@
 """
 Phase 1: Extract part numbers from the Johnstone Supply PDF catalog.
 
-Parses Cat_220_linked_p1.pdf using pdfplumber, extracts part numbers,
-descriptions, catalog page numbers, and builds product URLs.
-Outputs a CSV with 100 parts.
+Parses Cat_220_linked_p1.pdf using pdfplumber. The most reliable source of
+part numbers is the embedded hyperlinks (annotations) in the PDF which point
+to product-view URLs with ?pID= query parameters.
+
+Outputs a CSV with 100 unique parts.
 """
 
 import csv
@@ -16,83 +18,80 @@ import pdfplumber
 PDF_PATH = Path(__file__).resolve().parent.parent / "Cat_220_linked_p1.pdf"
 OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
 OUTPUT_CSV = OUTPUT_DIR / "parts_catalog.csv"
+# The live site uses this URL format (the PDF uses a legacy /storefront/ path
+# but both resolve to the same product page).
 BASE_URL = "https://www.johnstonesupply.com/product-view?pID="
 TARGET_PARTS = 100
 
 
 def extract_parts_from_pdf(pdf_path: str, target_count: int = TARGET_PARTS) -> list[dict]:
     """
-    Extract part numbers, descriptions, and page numbers from the catalog PDF.
+    Extract part numbers from the catalog PDF by scanning annotation hyperlinks.
 
-    Looks for Johnstone Supply order numbers (e.g., S81-007, L58-502, G21-930)
-    by scanning text and hyperlinks on each page.
+    The PDF embeds links like:
+      https://www.johnstonesupply.com/storefront/product-view.ep?pID=X82-169
+    We extract the pID value and build the canonical product URL.
     """
     parts = []
     seen_part_numbers = set()
 
-    # Common Johnstone Supply part number patterns:
-    # Letter(s) + digits + hyphen + digits (e.g., S81-007, L58-502, SA55-462)
-    part_pattern = re.compile(r'\b([A-Z]{1,3}\d{1,3}-\d{2,4})\b')
-
     with pdfplumber.open(str(pdf_path)) as pdf:
+        total_pages = len(pdf.pages)
+        print(f"PDF has {total_pages} pages. Scanning for product links...")
+
         for page_num, page in enumerate(pdf.pages, start=1):
             if len(parts) >= target_count:
                 break
 
+            if not page.annots:
+                continue
+
+            # Get page text for description extraction
             text = page.extract_text() or ""
-            lines = text.split('\n')
 
-            # Extract part numbers from text
-            for line in lines:
-                matches = part_pattern.findall(line)
-                for part_number in matches:
-                    if part_number in seen_part_numbers:
-                        continue
-                    if len(parts) >= target_count:
-                        break
+            for annot in page.annots:
+                if len(parts) >= target_count:
+                    break
 
-                    seen_part_numbers.add(part_number)
+                uri = annot.get("uri")
+                if not uri or "pID=" not in uri:
+                    continue
 
-                    # Try to get description from the same line or surrounding context
-                    description = _extract_description(line, part_number)
+                # Extract part number from URL query parameter
+                pid = uri.split("pID=")[-1].split("&")[0].strip()
+                if not pid or pid in seen_part_numbers:
+                    continue
 
-                    parts.append({
-                        "part_number": part_number,
-                        "url": f"{BASE_URL}{part_number}",
-                        "description": description,
-                        "catalog_page": page_num,
-                    })
+                seen_part_numbers.add(pid)
 
-            # Also check hyperlinks/annotations for part numbers in URLs
-            if page.annots:
-                for annot in page.annots:
-                    uri = annot.get("uri", "")
-                    if "pID=" in uri:
-                        pid = uri.split("pID=")[-1].split("&")[0]
-                        if pid and pid not in seen_part_numbers:
-                            if len(parts) >= target_count:
-                                break
-                            seen_part_numbers.add(pid)
-                            parts.append({
-                                "part_number": pid,
-                                "url": f"{BASE_URL}{pid}",
-                                "description": "",
-                                "catalog_page": page_num,
-                            })
+                # Try to find description context near this part number in the page text
+                description = _extract_description(text, pid)
+
+                parts.append({
+                    "part_number": pid,
+                    "url": f"{BASE_URL}{pid}",
+                    "description": description,
+                    "catalog_page": page_num,
+                })
+
+            if page_num % 100 == 0:
+                print(f"  Scanned {page_num}/{total_pages} pages, found {len(parts)} parts so far...")
 
     return parts
 
 
-def _extract_description(line: str, part_number: str) -> str:
-    """Try to extract a meaningful description from the line containing the part number."""
-    # Remove the part number itself and clean up
-    desc = line.replace(part_number, "").strip()
-    # Remove excessive whitespace
-    desc = re.sub(r'\s+', ' ', desc).strip()
-    # Truncate if too long
-    if len(desc) > 200:
-        desc = desc[:200].rsplit(' ', 1)[0] + "..."
-    return desc
+def _extract_description(page_text: str, part_number: str) -> str:
+    """Try to extract a meaningful description from the page text near the part number."""
+    lines = page_text.split("\n")
+    for i, line in enumerate(lines):
+        if part_number in line:
+            # Use the line itself, cleaned of the part number
+            desc = line.replace(part_number, "").strip()
+            desc = re.sub(r'\s+', ' ', desc).strip()
+            if len(desc) > 200:
+                desc = desc[:200].rsplit(' ', 1)[0] + "..."
+            return desc
+    return ""
 
 
 def write_csv(parts: list[dict], output_path: str) -> None:
