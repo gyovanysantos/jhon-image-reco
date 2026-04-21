@@ -6,7 +6,7 @@ from pathlib import Path
 
 import boto3
 
-BUCKET_NAME = "jhon-image-reco-data"
+BUCKET_NAME = "jhon-image-reco-data-424009524696"
 CSV_PATH = Path(__file__).resolve().parent.parent / "output" / "parts_catalog.csv"
 S3_KEY = "csv/parts_catalog.csv"
 

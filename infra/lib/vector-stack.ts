@@ -2,12 +2,11 @@ import * as cdk from 'aws-cdk-lib';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as s3 from 'aws-cdk-lib/aws-s3';
-import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
 import * as opensearchserverless from 'aws-cdk-lib/aws-opensearchserverless';
 import { Construct } from 'constructs';
 
 export interface VectorStackProps extends cdk.StackProps {
-  dataBucket: s3.Bucket;
+  dataBucket: s3.IBucket;
 }
 
 export class VectorStack extends cdk.Stack {
@@ -66,8 +65,11 @@ export class VectorStack extends cdk.Stack {
       },
     });
 
-    // Grant S3 read access
-    props.dataBucket.grantRead(vectorizeFn);
+    // Grant S3 read access via IAM policy (avoids cross-stack cyclic ref)
+    vectorizeFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['s3:GetObject', 's3:ListBucket'],
+      resources: [props.dataBucket.bucketArn, `${props.dataBucket.bucketArn}/*`],
+    }));
 
     // Grant Bedrock access
     vectorizeFn.addToRolePolicy(new iam.PolicyStatement({
@@ -98,12 +100,8 @@ export class VectorStack extends cdk.Stack {
       ]),
     });
 
-    // S3 event trigger for new images
-    props.dataBucket.addEventNotification(
-      s3.EventType.OBJECT_CREATED,
-      new s3n.LambdaDestination(vectorizeFn),
-      { prefix: 'images/' },
-    );
+    // NOTE: S3 event trigger removed to avoid cross-stack cyclic dependency.
+    // Vectorization is done via batch script (scripts/batch_vectorize.py) instead.
 
     // Outputs
     new cdk.CfnOutput(this, 'OpenSearchEndpoint', { value: collection.attrCollectionEndpoint });

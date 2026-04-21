@@ -28,6 +28,10 @@ class S3ImagePipeline:
 
     def open_spider(self, spider):
         self.s3 = boto3.client("s3", region_name=self.region)
+        self.http_headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "image/*,*/*;q=0.8",
+        }
 
     def process_item(self, item, spider):
         adapter = ItemAdapter(item)
@@ -38,7 +42,7 @@ class S3ImagePipeline:
         for i, url in enumerate(image_urls):
             try:
                 import requests as req_lib
-                response = req_lib.get(url, timeout=30)
+                response = req_lib.get(url, headers=self.http_headers, timeout=30)
                 response.raise_for_status()
 
                 # Determine extension

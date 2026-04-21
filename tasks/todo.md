@@ -3,14 +3,15 @@
 ## Phase 1: PDF Extraction → CSV
 - [x] Extract 100 parts from `Cat_220_linked_p1.pdf`
 - [x] Generate `output/parts_catalog.csv`
-- [ ] Upload CSV to S3
+- [x] Upload CSV to S3
 
 ## Phase 2: Web Scraping
-- [ ] Deploy CDK StorageStack (S3 bucket, DynamoDB table)
-- [ ] Upload CSV to S3
-- [ ] Install Scrapy deps and test spider on 5 parts
-- [ ] Build and push scraper Docker image to ECR
-- [ ] Run full scrape (100 parts → images + JSON + DynamoDB)
+- [x] Deploy CDK StorageStack (S3 bucket)
+- [x] Deploy CDK ScraperStack (DynamoDB table, ECR, VPC, ECS)
+- [x] Upload CSV to S3
+- [x] Fix spider selectors (title, brand, mfg#, specs, images)
+- [x] Test spider on 5 parts (dry run + full pipeline)
+- [x] Run full scrape (100 parts → images + JSON + DynamoDB)
 
 ## Phase 3: Image Vectorization
 - [ ] Deploy VectorStack (OpenSearch Serverless collection)

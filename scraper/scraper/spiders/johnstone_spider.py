@@ -48,7 +48,7 @@ class JohnstoneSpider(scrapy.Spider):
         if self.csv_source == "s3":
             s3 = boto3.client("s3")
             obj = s3.get_object(
-                Bucket="jhon-image-reco-data", Key="csv/parts_catalog.csv"
+                Bucket="jhon-image-reco-data-424009524696", Key="csv/parts_catalog.csv"
             )
             text = obj["Body"].read().decode("utf-8")
             reader = csv.DictReader(io.StringIO(text))
@@ -65,67 +65,58 @@ class JohnstoneSpider(scrapy.Spider):
     def parse_product(self, response):
         part_number = response.meta["part_number"]
 
-        # Title
-        title = response.css("h1::text").get("").strip()
+        # Title — from og:title meta tag (most reliable) or [class*=Spec] container
+        title = response.css('meta[property="og:title"]::attr(content)').get("").strip()
         if not title:
-            title = response.css(".product-title::text").get("").strip()
+            title = response.css('[class*="Spec"]::text').getall()
+            title = " ".join(t.strip() for t in title if t.strip())
 
-        # Specifications table
+        # Order #, Mfg #, Brand — from dedicated <strong> elements
+        mfg_number = response.css("#productManufacturerNumber::text").get("").strip()
+        brand = response.css("#productBrand::text").get("").strip()
+
+        # Specifications table — uses <th> for keys and <td> for values
         specs = {}
-        spec_rows = response.css("table tr")
+        spec_rows = response.css("table.table tr")
         for row in spec_rows:
-            cells = row.css("td::text").getall()
-            if len(cells) >= 2:
-                key = cells[0].strip()
-                value = cells[1].strip()
-                if key:
-                    specs[key] = value
+            key = row.css("th::text").get("").strip()
+            value = row.css("td::text").get("").strip()
+            if key and value:
+                specs[key] = value
 
-        # Order #, Mfg #, Brand
-        order_number = part_number
-        mfg_number = ""
-        brand = ""
-
-        # Look for Mfg. # pattern in text
-        for text_block in response.css("*::text").getall():
-            text_block = text_block.strip()
-            if text_block.startswith("Mfg. #:"):
-                mfg_number = text_block.replace("Mfg. #:", "").strip()
-            elif text_block.startswith("Brand:"):
-                brand = text_block.replace("Brand:", "").strip()
-
-        # Try CSS selectors for structured data
-        if not mfg_number:
-            mfg_number = response.css('[data-field="mfg_number"]::text').get("").strip()
-        if not brand:
-            brand = response.css('[data-field="brand"]::text').get("").strip()
-
-        # Description
-        description = response.css(".description p::text").get("").strip()
-        if not description:
-            description = response.meta.get("csv_description", "")
+        # Description — from CSV fallback (page description is usually the title)
+        description = response.meta.get("csv_description", "")
 
         # Catalog page
         catalog_page = response.meta.get("catalog_page", "")
 
-        # Images - collect all product image URLs
+        # Images — product images via renderImage endpoint and Sirv CDN
         image_urls = []
+        seen = set()
+        RENDER_BASE = "https://www.johnstonesupply.com/images/renderImage"
 
-        # Sirv CDN images
-        for img_url in response.css("img::attr(src)").getall():
-            if "johnstonesupply.sirv.com" in img_url:
-                # Get full-size version by removing size params
-                clean_url = img_url.split("?")[0]
-                if clean_url not in image_urls:
-                    image_urls.append(clean_url)
+        # Primary: Sirv viewer div contains the image path for renderImage
+        # e.g. data-productimage="WEB/10097/N99-394cl.jpg"
+        for path in response.css('.Sirv::attr(data-productimage)').getall():
+            url = f"{RENDER_BASE}?imageName={path}&width=800&height=600"
+            if url not in seen:
+                seen.add(url)
+                image_urls.append(url)
 
-        # Johnstone renderImage URLs
-        for img_url in response.css("img::attr(src)").getall():
-            if "renderImage" in img_url:
-                if img_url.startswith("/"):
-                    img_url = f"https://www.johnstonesupply.com{img_url}"
-                if img_url not in image_urls:
-                    image_urls.append(img_url)
+        # Sirv CDN thumbnails (loaded via JS, may not always be in HTML)
+        for url in response.css('img[src*="johnstonesupply.sirv.com"]::attr(src)').getall():
+            clean = url.split("?")[0]
+            if clean not in seen:
+                seen.add(clean)
+                image_urls.append(clean)
+
+        # renderImage URLs directly in img tags
+        for url in response.css('img[src*="renderImage"]::attr(src)').getall():
+            if url.startswith("/"):
+                url = f"https://www.johnstonesupply.com{url}"
+            if url not in seen:
+                seen.add(url)
+                image_urls.append(url)
 
         # Datasheets and resources
         datasheets = []

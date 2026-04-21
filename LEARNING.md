@@ -21,3 +21,26 @@ Invoke-RestMethod -Uri "https://api.github.com/user/repos" -Method Post -Headers
 
 **Q: How to install packages when Python is managed by uv?**  
 A: Don't use `pip install` directly. Create a venv with `uv venv .venv`, activate it, then use `uv pip install package_name`.
+
+## Web Scraping
+
+**Q: Why was the Scrapy spider getting 0 items?**  
+A: The site's `robots.txt` has `Disallow: /` for `User-agent: *`, blocking all unknown bots. Since the product pages are public (allowed for Google/Bing), set `ROBOTSTXT_OBEY = False` and use a browser-like User-Agent.
+
+**Q: Why were the CSS selectors not matching any data?**  
+A: The page uses specific HTML structure:
+- Title: `<meta property="og:title">` (not `<h1>`)
+- Brand: `<strong id="productBrand">`
+- Mfg #: `<strong id="productManufacturerNumber">`
+- Specs: `<table class="table"> <tr> <th>key</th> <td>value</td> </tr>` (uses `<th>` not `<td>` for keys)
+
+**Q: Why were product images returning 404?**  
+A: The Sirv viewer uses `data-productimage="WEB/10097/N99-394cl.jpg"` which is a path for the `renderImage` endpoint, NOT a direct Sirv CDN URL. Correct URL: `https://www.johnstonesupply.com/images/renderImage?imageName=WEB/...&width=800&height=600`
+
+## CDK / AWS
+
+**Q: What caused the cyclic dependency error in CDK?**  
+A: The VectorStack imported `dataBucket` from StorageStack (dependency: Vector → Storage), then called `dataBucket.addEventNotification()` which creates a Lambda permission that references the Lambda ARN (dependency: Storage → Vector). Fix: remove S3 event notification and use batch script instead, and use `s3.IBucket` type + explicit IAM policies to avoid cross-stack references.
+
+**Q: What packages are needed for CDK TypeScript?**  
+A: Must install `@types/node` (devDep) and `source-map-support` in addition to `aws-cdk-lib` and `constructs`.

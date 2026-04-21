@@ -3,14 +3,15 @@ BOT_NAME = "scraper"
 SPIDER_MODULES = ["scraper.spiders"]
 NEWSPIDER_MODULE = "scraper.spiders"
 
-# Politeness
-ROBOTSTXT_OBEY = True
+# Politeness - product pages are public (allowed for Google/Bing in robots.txt)
+# but blocked for unknown user agents. We crawl politely with delay.
+ROBOTSTXT_OBEY = False
 DOWNLOAD_DELAY = 2.5
 CONCURRENT_REQUESTS = 1
 CONCURRENT_REQUESTS_PER_DOMAIN = 1
 
-# User-Agent
-USER_AGENT = "JhonImageReco Bot/1.0 (+https://github.com/gyovanysantos/jhon-image-reco)"
+# User-Agent — site requires browser-like UA for product pages
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 # Pipelines
 ITEM_PIPELINES = {
@@ -20,8 +21,8 @@ ITEM_PIPELINES = {
 }
 
 # AWS
-AWS_REGION = "us-east-1"
-S3_BUCKET = "jhon-image-reco-data"
+AWS_REGION = "us-east-2"
+S3_BUCKET = "jhon-image-reco-data-424009524696"
 
 # Logging
 LOG_LEVEL = "INFO"

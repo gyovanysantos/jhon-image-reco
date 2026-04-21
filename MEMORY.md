@@ -2,7 +2,7 @@
 
 ## Current State
 - **Phase 1 (PDF Extraction)**: COMPLETE — 100 parts extracted to `output/parts_catalog.csv`
-- **Phase 2 (Scraping)**: Not started
+- **Phase 2 (Scraping)**: COMPLETE — 100 parts scraped, images + JSON in S3, data in DynamoDB
 - **Phase 3 (Vectorization)**: Not started
 - **Phase 4 (AR Web App)**: Not started
 - **Phase 5 (Deploy)**: Not started
@@ -10,8 +10,10 @@
 ## Environment
 - Python 3.14.3 via uv 0.11.2
 - Virtual env: `.venv/`
-- Installed: pdfplumber 0.11.9, boto3 1.42.93
+- Installed: pdfplumber 0.11.9, boto3 1.42.93, scrapy 2.15.0, requests 2.33.1
 - Git remote: https://github.com/gyovanysantos/jhon-image-reco
+- AWS Account: 424009524696, Region: us-east-2
+- CDK bootstrapped, 2 stacks deployed: JhonImageRecoStorage, JhonImageRecoScraper
 
 ## Key Findings
 - PDF: `Cat_220_linked_p1.pdf` — 1466 pages, product links begin at page 10
@@ -20,7 +22,20 @@
 - Annotation URIs are the most reliable source of part numbers (over regex text scan)
 - Product pages return: title, specs (HP, Volts, RPM), brand, mfg #, images at johnstonesupply.sirv.com
 
-## AWS Resources (to be created)
-- S3 bucket: `jhon-image-reco-data`
-- DynamoDB table: `jhon-image-reco-parts`
-- OpenSearch collection: `jhon-image-reco-vectors`
+## AWS Resources (deployed)
+- S3 bucket: `jhon-image-reco-data-424009524696`
+  - `csv/parts_catalog.csv` — 100 parts
+  - `images/{part_number}/{part_number}_0.jpg` — 100 product images
+  - `scraped-data/{part_number}.json` — 100 JSON records
+- DynamoDB table: `parts-catalog` — 100 items
+- CDK stacks: JhonImageRecoStorage, JhonImageRecoScraper
+- OpenSearch collection: not yet deployed
+
+## Spider Details
+- Site blocks unknown user agents (`Disallow: /` for `*` in robots.txt)
+- Browser-like User-Agent required for 200 responses
+- Product title: `og:title` meta tag
+- Brand/Mfg#: `#productBrand`, `#productManufacturerNumber` elements
+- Specs: `table.table tr` with `<th>` key + `<td>` value
+- Images: `data-productimage` attr → renderImage URL
+- renderImage format: `https://www.johnstonesupply.com/images/renderImage?imageName={path}&width=800&height=600`
