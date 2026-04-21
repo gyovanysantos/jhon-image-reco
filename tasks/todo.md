@@ -21,10 +21,13 @@
 - [x] End-to-end similarity test (motors match motors, thermostats rank low)
 
 ## Phase 4: AR Web App + API
+- [x] Create local FastAPI server (api/server.py, port 3001)
+- [x] Install frontend dependencies (React, Vite, TailwindCSS)
+- [x] Configure Vite proxy (/api → localhost:3001)
+- [x] Test local recognize endpoint (5 matches returned correctly)
 - [ ] Deploy ApiStack (API Gateway, Lambda handlers)
-- [ ] Build React frontend
+- [ ] Build React frontend for production
 - [ ] Deploy FrontendStack (CloudFront + S3)
-- [ ] End-to-end test: upload image → get part result
 
 ## Phase 5: Polish & Deploy
 - [ ] Performance tuning (cold starts, image sizes)

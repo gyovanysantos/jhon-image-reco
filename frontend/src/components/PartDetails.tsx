@@ -53,18 +53,12 @@ export default function PartDetails({ part, onBack, onClose }: PartDetailsProps)
             </div>
           )}
           <div className="bg-slate-800 rounded-lg p-3">
-            <p className="text-slate-400 text-xs uppercase">Pricing</p>
-            <p className="text-amber-400 text-sm">{part.pricing || 'Sign in required'}</p>
+            <p className="text-slate-400 text-xs uppercase">Match</p>
+            <p className="text-green-400 text-sm font-mono">
+              {(part.confidence_score * 100).toFixed(1)}%
+            </p>
           </div>
         </div>
-
-        {/* Description */}
-        {part.description && (
-          <div className="mb-4">
-            <h3 className="text-sm font-semibold text-slate-300 uppercase mb-2">Description</h3>
-            <p className="text-slate-400 text-sm">{part.description}</p>
-          </div>
-        )}
 
         {/* Specifications */}
         {specEntries.length > 0 && (
@@ -81,26 +75,6 @@ export default function PartDetails({ part, onBack, onClose }: PartDetailsProps)
                   ))}
                 </tbody>
               </table>
-            </div>
-          </div>
-        )}
-
-        {/* Datasheets */}
-        {part.datasheets && part.datasheets.length > 0 && (
-          <div className="mb-4">
-            <h3 className="text-sm font-semibold text-slate-300 uppercase mb-2">Resources</h3>
-            <div className="space-y-2">
-              {part.datasheets.map((ds, i) => (
-                <a
-                  key={i}
-                  href={ds.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block bg-slate-800 rounded-lg px-3 py-2 text-blue-400 hover:text-blue-300 text-sm"
-                >
-                  {ds.title || ds.url}
-                </a>
-              ))}
             </div>
           </div>
         )}

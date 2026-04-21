@@ -1,17 +1,18 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+// In dev mode, Vite proxy forwards /api/* to localhost:3001
+// In production, VITE_API_URL points to the API Gateway URL
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 export interface PartMatch {
   part_number: string;
   confidence_score: number;
   title: string;
-  description: string;
   brand: string;
   mfg_number: string;
   url: string;
   specifications: Record<string, string>;
-  pricing: string;
-  catalog_page: string | number;
-  datasheets: { title: string; url: string }[];
+  image_keys: string[];
+  image_s3_key: string;
+  [key: string]: unknown; // allow extra DynamoDB fields
 }
 
 export interface RecognizeResponse {

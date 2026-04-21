@@ -9,6 +9,8 @@
 | **pdfplumber** | 0.11.9 | Extracts text and annotation hyperlinks from PDF catalogs |
 | **Scrapy** | 2.11+ | Production-grade web scraping framework with built-in rate limiting and pipeline system |
 | **boto3** | 1.42.93 | AWS SDK for Python — S3 uploads, DynamoDB writes, Bedrock inference |
+| **FastAPI** | 0.136.0 | Local development API server — mirrors Lambda handler logic for testing |
+| **Uvicorn** | 0.45.0 | ASGI server for running FastAPI locally |
 
 ## AWS Services
 
