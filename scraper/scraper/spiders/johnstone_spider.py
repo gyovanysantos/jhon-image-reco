@@ -1,0 +1,153 @@
+"""
+Phase 2: Scrapy spider for Johnstone Supply product pages.
+
+Reads part numbers from CSV, scrapes each product page for details and images.
+"""
+
+import csv
+import io
+from pathlib import Path
+
+import boto3
+import scrapy
+
+from scraper.items import PartItem
+
+
+class JohnstoneSpider(scrapy.Spider):
+    name = "johnstone"
+    allowed_domains = ["johnstonesupply.com", "johnstonesupply.sirv.com"]
+
+    def __init__(self, csv_source="local", limit=None, *args, **kwargs):
+        """
+        Args:
+            csv_source: "local" to read from output/parts_catalog.csv,
+                        "s3" to read from S3 bucket.
+            limit: Max number of parts to scrape (None = all).
+        """
+        super().__init__(*args, **kwargs)
+        self.csv_source = csv_source
+        self.limit = int(limit) if limit else None
+
+    def start_requests(self):
+        parts = self._load_csv()
+        for i, row in enumerate(parts):
+            if self.limit and i >= self.limit:
+                break
+            yield scrapy.Request(
+                url=row["url"],
+                callback=self.parse_product,
+                meta={
+                    "part_number": row["part_number"],
+                    "catalog_page": row.get("catalog_page", ""),
+                    "csv_description": row.get("description", ""),
+                },
+            )
+
+    def _load_csv(self) -> list[dict]:
+        if self.csv_source == "s3":
+            s3 = boto3.client("s3")
+            obj = s3.get_object(
+                Bucket="jhon-image-reco-data", Key="csv/parts_catalog.csv"
+            )
+            text = obj["Body"].read().decode("utf-8")
+            reader = csv.DictReader(io.StringIO(text))
+            return list(reader)
+        else:
+            csv_path = (
+                Path(__file__).resolve().parent.parent.parent.parent
+                / "output"
+                / "parts_catalog.csv"
+            )
+            with open(csv_path, encoding="utf-8") as f:
+                return list(csv.DictReader(f))
+
+    def parse_product(self, response):
+        part_number = response.meta["part_number"]
+
+        # Title
+        title = response.css("h1::text").get("").strip()
+        if not title:
+            title = response.css(".product-title::text").get("").strip()
+
+        # Specifications table
+        specs = {}
+        spec_rows = response.css("table tr")
+        for row in spec_rows:
+            cells = row.css("td::text").getall()
+            if len(cells) >= 2:
+                key = cells[0].strip()
+                value = cells[1].strip()
+                if key:
+                    specs[key] = value
+
+        # Order #, Mfg #, Brand
+        order_number = part_number
+        mfg_number = ""
+        brand = ""
+
+        # Look for Mfg. # pattern in text
+        for text_block in response.css("*::text").getall():
+            text_block = text_block.strip()
+            if text_block.startswith("Mfg. #:"):
+                mfg_number = text_block.replace("Mfg. #:", "").strip()
+            elif text_block.startswith("Brand:"):
+                brand = text_block.replace("Brand:", "").strip()
+
+        # Try CSS selectors for structured data
+        if not mfg_number:
+            mfg_number = response.css('[data-field="mfg_number"]::text').get("").strip()
+        if not brand:
+            brand = response.css('[data-field="brand"]::text').get("").strip()
+
+        # Description
+        description = response.css(".description p::text").get("").strip()
+        if not description:
+            description = response.meta.get("csv_description", "")
+
+        # Catalog page
+        catalog_page = response.meta.get("catalog_page", "")
+
+        # Images - collect all product image URLs
+        image_urls = []
+
+        # Sirv CDN images
+        for img_url in response.css("img::attr(src)").getall():
+            if "johnstonesupply.sirv.com" in img_url:
+                # Get full-size version by removing size params
+                clean_url = img_url.split("?")[0]
+                if clean_url not in image_urls:
+                    image_urls.append(clean_url)
+
+        # Johnstone renderImage URLs
+        for img_url in response.css("img::attr(src)").getall():
+            if "renderImage" in img_url:
+                if img_url.startswith("/"):
+                    img_url = f"https://www.johnstonesupply.com{img_url}"
+                if img_url not in image_urls:
+                    image_urls.append(img_url)
+
+        # Datasheets and resources
+        datasheets = []
+        resource_links = response.css('a[href*=".pdf"], a[href*="youtube"], a[href*="catalog"]')
+        for link in resource_links:
+            href = link.attrib.get("href", "")
+            text = link.css("::text").get("").strip()
+            if href:
+                datasheets.append({"title": text, "url": href})
+
+        item = PartItem()
+        item["part_number"] = part_number
+        item["title"] = title
+        item["description"] = description
+        item["brand"] = brand
+        item["mfg_number"] = mfg_number
+        item["catalog_page"] = catalog_page
+        item["url"] = response.url
+        item["specifications"] = specs
+        item["image_urls"] = image_urls
+        item["image_keys"] = []  # Populated by S3ImagePipeline
+        item["datasheets"] = datasheets
+        item["pricing"] = "Sign in required"
+
+        yield item

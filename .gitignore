@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+
+# Node
+node_modules/
+frontend/dist/
+infra/cdk.out/
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# AWS
+.aws-sam/
+cdk.context.json
+
+# Scrapy
+scraper/*.log
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Output
+output/
+*.csv
+*.pdf
+!scripts/requirements.txt
+
+# Catalog
+catalog/
