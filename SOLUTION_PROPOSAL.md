@@ -1,6 +1,6 @@
 # Solution Proposal: HVAC Part Image Recognition System
 
-**Prepared by**: Gyovany Santos  
+**Prepared by**: Nathan Eaves, Jaime DelValle, Gyovany Santos  
 **Date**: April 2026  
 **Client**: Johnstone Supply  
 **Status**: ✅ Delivered — Proof of Concept Live
